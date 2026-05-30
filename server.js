@@ -4,15 +4,19 @@ const path = require('path');
 
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
+
+// Serve static files from public/ if it exists, otherwise root
+const fs = require('fs');
+const staticDir = fs.existsSync(path.join(__dirname, 'public')) 
+  ? path.join(__dirname, 'public') 
+  : __dirname;
+app.use(express.static(staticDir));
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ANALYZE PROJECT PROMPT
 app.post('/api/analyze', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'No prompt provided' });
-
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -30,17 +34,16 @@ Return this exact JSON structure:
   "location": "city, state",
   "sqft": "number like 200000",
   "projectType": "one of: Data Center, Distribution Center, Manufacturing Facility, Industrial Campus",
-  "criticalLoad": "power in MW if applicable, else null",
-  "totalCost": "estimated hard cost in format like $48.2M",
-  "traditionalCost": "benchmark cost ~18% higher in format like $56.9M", 
-  "savings": "dollar savings in format like $8.7M",
+  "totalCost": "estimated hard cost like $48.2M",
+  "traditionalCost": "benchmark cost ~18% higher like $56.9M",
+  "savings": "dollar savings like $8.7M",
   "savingsPct": "percentage like 15.3%",
   "duration": "schedule in months like 18",
   "traditionalDuration": "traditional duration like 22",
   "peakWorkers": "number like 640",
   "sheets": 14,
   "bomItems": "number like 247",
-  "conflicts": "number of AI-detected conflicts like 7",
+  "conflicts": "number like 7",
   "summary": "2 sentence summary of what EPSL AI generated and key insights",
   "aiFlags": [
     {"type": "conflict", "title": "CONFLICT DETECTED", "body": "specific technical conflict found", "impact": "estimated cost/time impact"},
@@ -57,7 +60,7 @@ Return this exact JSON structure:
       {"name": "Rebar — All Foundations", "spec": "#4-#8 ASTM A615", "qty": "X,XXX TON", "unitPrice": "$X,XXX", "extended": "$X.XXM", "benchmark": "$X,XXX/T", "savings": "+$XXXK", "status": "awarded"}
     ]},
     {"category": "ELECTRICAL / POWER", "items": [
-      {"name": "Main Switchgear", "spec": "Primary voltage, dual-bus", "qty": "X UNITS", "unitPrice": "$XXX,XXX", "extended": "$X.XXM", "benchmark": "$XXX,XXX/ea", "savings": "+$XXXK", "status": "pending"},
+      {"name": "Main Switchgear", "spec": "Primary voltage dual-bus", "qty": "X UNITS", "unitPrice": "$XXX,XXX", "extended": "$X.XXM", "benchmark": "$XXX,XXX/ea", "savings": "+$XXXK", "status": "pending"},
       {"name": "Emergency Generators", "spec": "Per project spec", "qty": "X UNITS", "unitPrice": "$XXX,XXX", "extended": "$X.XXM", "benchmark": "$XXX,XXX/ea", "savings": "+$XXXK", "status": "quoted"}
     ]},
     {"category": "MECHANICAL / ENVELOPE", "items": [
@@ -68,9 +71,9 @@ Return this exact JSON structure:
 }`
       }]
     });
-
     const text = message.content[0].text.trim();
-    const json = JSON.parse(text);
+    const clean = text.replace(/```json|```/g, '').trim();
+    const json = JSON.parse(clean);
     res.json({ success: true, data: json });
   } catch (err) {
     console.error('Analyze error:', err.message);
@@ -78,11 +81,9 @@ Return this exact JSON structure:
   }
 });
 
-// CHANGE ORDER
 app.post('/api/changeorder', async (req, res) => {
   const { change, projectContext } = req.body;
   if (!change) return res.status(400).json({ error: 'No change provided' });
-
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -90,24 +91,22 @@ app.post('/api/changeorder', async (req, res) => {
       messages: [{
         role: 'user',
         content: `You are EPSL AI processing a change order for an industrial construction project.
-
-Project context: ${projectContext || 'Large industrial data center'}
+Project context: ${projectContext || 'Large industrial project'}
 Change requested: "${change}"
-
 Return ONLY valid JSON:
 {
-  "summary": "one sentence: Change applied: [what changed]",
-  "drawingsUpdated": ["list of 3-4 sheet numbers updated like A-101, S-201"],
-  "costDelta": "cost change like +$380K or -$120K",
-  "scheduleDelta": "schedule impact like +6 days or 0-day impact",
-  "procurementDelta": "key procurement changes in one sentence",
-  "processingTime": "time like 0.4 seconds"
+  "summary": "Change applied: [what changed in one sentence]",
+  "drawingsUpdated": ["A-101", "S-201", "C-101"],
+  "costDelta": "+$380K",
+  "scheduleDelta": "+6 days or 0-day impact",
+  "procurementDelta": "key procurement changes",
+  "processingTime": "0.4 seconds"
 }`
       }]
     });
-
     const text = message.content[0].text.trim();
-    const json = JSON.parse(text);
+    const clean = text.replace(/```json|```/g, '').trim();
+    const json = JSON.parse(clean);
     res.json({ success: true, data: json });
   } catch (err) {
     console.error('Change order error:', err.message);
@@ -115,8 +114,15 @@ Return ONLY valid JSON:
   }
 });
 
-// Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', platform: 'EPSL AI — Iron Horse Group' }));
+
+// Catch-all — serve index.html
+app.get('*', (req, res) => {
+  const indexPath = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
+    ? path.join(__dirname, 'public', 'index.html')
+    : path.join(__dirname, 'index.html');
+  res.sendFile(indexPath);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`EPSL AI running on port ${PORT}`));
