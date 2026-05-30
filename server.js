@@ -20,7 +20,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: [{
         role: 'user',
         content: `You are EPSL AI, an industrial construction execution platform by Iron Horse Group. 
